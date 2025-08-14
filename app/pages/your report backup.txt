@@ -1,0 +1,834 @@
+"""import streamlit as st
+import pdfplumber
+import pandas as pd
+import re
+import matplotlib.pyplot as plt
+import plotly.express as px
+import numpy as np
+import plotly.graph_objects as go
+
+#st.session_state['transaction_data']
+
+st.title("Summary Analysis")
+
+# Check if transaction_data exists in session state
+if 'transaction_data' in st.session_state:
+    transaction_data = st.session_state['transaction_data']
+
+    # Display the original transaction data (optional)
+    st.subheader("Transaction Data Preview")
+    st.dataframe(transaction_data.head())
+
+    
+
+    # Check if transaction_data exists in session state
+    if 'transaction_data' in st.session_state:
+        transaction_data = st.session_state['transaction_data']
+        
+    summary_data = {
+        "Metric": [
+            "Total Money In (Paid In)", 
+            "Total Money Out (Withdrawn)", 
+            #"Final Balance", 
+            "Number of Transactions", 
+            "Maximum Balance", 
+            "Minimum Balance"
+        ],
+        "Value (Ksh.)": [
+            transaction_data['Paid In'].sum(),
+            transaction_data['Withdrawn'].sum(),
+            #transaction_data['Balance'].iloc[-1],
+            len(transaction_data),
+            transaction_data['Balance'].max(),
+            transaction_data['Balance'].min()
+        ]
+    }
+    
+    # Step 2: Convert the summary into a DataFrame
+    summary_df = pd.DataFrame(summary_data)
+    #summary_df.round(2)
+    summary_df["Value (Ksh.)"] = summary_df["Value (Ksh.)"].apply(lambda x: f"{x:,.2f}" if isinstance(x, (float, int)) else x)
+
+    # Step 3: Display the summary as a DataFrame
+    st.subheader("Transaction Summary")
+    st.dataframe(summary_df)
+    # Ensure 'Completion Time' is in datetime format
+    transaction_data['Completion Time'] = pd.to_datetime(transaction_data['Completion Time'])
+
+    # Extract date-related information
+    transaction_data['Date'] = transaction_data['Completion Time'].dt.date  # Extract just the date
+    transaction_data['Week'] = transaction_data['Completion Time'].dt.isocalendar().week  # Extract week number
+    transaction_data['Month'] = transaction_data['Completion Time'].dt.month  # Extract month
+    transaction_data['Year'] = transaction_data['Completion Time'].dt.year  # Extract year
+    transaction_data['Year-Month'] = transaction_data['Completion Time'].dt.to_period('M')  # Year-Month combo
+
+    # Step 1: Daily Transaction Volumes
+    daily_summary = transaction_data.groupby('Date').agg(
+        Total_Transactions=('Receipt No.', 'count'),
+        Total_Money_In=('Paid In', 'sum'),
+        Total_Money_Out=('Withdrawn', 'sum')
+    ).reset_index()
+
+    # Step 2: Weekly Transaction Volumes
+    weekly_summary = transaction_data.groupby('Week').agg(
+        Total_Transactions=('Receipt No.', 'count'),
+        Total_Money_In=('Paid In', 'sum'),
+        Total_Money_Out=('Withdrawn', 'sum')
+    ).reset_index()
+
+    # Step 3: Monthly Transaction Volumes
+    monthly_summary = transaction_data.groupby('Year-Month').agg(
+        Total_Transactions=('Receipt No.', 'count'),
+        Total_Money_In=('Paid In', 'sum'),
+        Total_Money_Out=('Withdrawn', 'sum')
+    ).reset_index()
+
+    # Step 4: Yearly Transaction Volumes
+    yearly_summary = transaction_data.groupby('Year').agg(
+        Total_Transactions=('Receipt No.', 'count'),
+        Total_Money_In=('Paid In', 'sum'),
+        Total_Money_Out=('Withdrawn', 'sum')
+    ).reset_index()
+    yearly_summary['Year'] = yearly_summary['Year'].astype(str)
+    # Format monetary values for all summaries
+    #for summary in [daily_summary, weekly_summary, monthly_summary, yearly_summary]:
+    #    summary['Total Money In'] = summary['Total_Money_In'].apply(lambda x: f"{x:,.2f}")
+    #    summary['Total Money Out'] = summary['Total_Money_Out'].apply(lambda x: f"{x:,.2f}")
+
+    # Display the summaries
+    st.subheader("Daily Transaction Volumes")
+    st.dataframe(daily_summary)
+
+    st.subheader("Weekly Transaction Volumes")
+    st.dataframe(weekly_summary)
+
+    st.subheader("Monthly Transaction Volumes")
+    st.dataframe(monthly_summary)
+
+    st.subheader("Yearly Transaction Volumes")
+    st.dataframe(yearly_summary)
+
+    # Step 1: Get the top N largest transactions for Money In and Money Out
+    N = 5  # You can adjust this number to any value you want (e.g., top 5 largest)
+
+    # Top N largest "Money In" transactions
+    top_n_money_in = transaction_data.nlargest(N, 'Paid In')[['Receipt No.', 'Completion Time', 'Paid In']]
+
+    # Top N largest "Money Out" transactions
+    top_n_money_out = transaction_data.nlargest(N, 'Withdrawn')[['Receipt No.', 'Completion Time', 'Withdrawn']]
+
+    # Format values to add commas and two decimals
+    top_n_money_in['Paid In'] = top_n_money_in['Paid In'].apply(lambda x: f"Ksh {x:,.2f}")
+    top_n_money_out['Withdrawn'] = top_n_money_out['Withdrawn'].apply(lambda x: f"Ksh {x:,.2f}")
+    
+    # Step 2: Display the top N largest transactions for both Money In and Money Out
+    st.subheader(f"Top {N} Largest Money In Transactions")
+    st.dataframe(top_n_money_in)
+
+    st.subheader(f"Top {N} Largest Money Out Transactions")
+    st.dataframe(top_n_money_out)
+
+    # Step 3: Most Active Days
+    st.subheader("Most Active Days")
+    # Assuming the 'Date' column exists or we need to extract it from the transaction data
+    if 'Date' in transaction_data.columns:
+        # Convert 'Date' to datetime if it's not already
+        transaction_data['Date'] = pd.to_datetime(transaction_data['Date'], errors='coerce')
+        
+        # Group by 'Date' and calculate the total transaction amount for each day
+        active_days = transaction_data.groupby('Date').agg(
+            transaction_count=('Paid In', 'size'),
+            total_amount=('Paid In', 'sum')
+        ).reset_index()
+
+        # Sort by transaction count or total amount (choose whichever makes more sense)
+        active_days_sorted_by_count = active_days.sort_values(by='transaction_count', ascending=False)
+        active_days_sorted_by_amount = active_days.sort_values(by='total_amount', ascending=False)
+
+        # Display the top N active days by transaction count and total amount
+        st.subheader("Top Active Days by Transaction Count")
+        st.dataframe(active_days_sorted_by_count.head(N))  # Display top N days by transaction count
+
+        st.subheader("Top Active Days by Total Amount")
+        st.dataframe(active_days_sorted_by_amount.head(N))  # Display top N days by total amount
+
+    # Step 4: Category Breakdown
+    st.subheader("Category Breakdown")
+    # Assuming 'Details' column exists, infer categories (e.g., based on keywords in 'Details')
+    def infer_category(details):
+        # Define categories based on keywords
+        categories = {
+            'Utility Payment': ['kplc'],
+            'Transfer': ['customer transfer', 'Customer Payment to Small Business','Merchant Payment Online', 'Pay Bill Online'],
+            'Deposit': ['deposit', 'credit'],
+            'Withdraw': ['withdraw', 'debit']
+            # Add more categories as needed
+        }
+        
+        for category, keywords in categories.items():
+            if any(keyword.lower() in str(details).lower() for keyword in keywords):
+                return category
+        return 'Other'  # Default category if no match is found
+
+    # Apply the category inference to the 'Details' column
+    transaction_data['Category'] = transaction_data['Details'].apply(infer_category)
+
+    # Group by 'Category' and calculate the total amount for each category
+    category_breakdown = transaction_data.groupby('Category').agg(
+        total_paid_in=('Paid In', 'sum'),
+        total_withdrawn=('Withdrawn', 'sum'),
+        total_balance=('Balance', 'sum'),
+        transaction_count=('Paid In', 'size')
+    ).reset_index()
+
+    # Display the category breakdown
+    st.dataframe(category_breakdown)
+        
+    # Define the keywords for send and receive money transactions
+    send_keywords = ["Customer Transfer Fuliza MPesa", "Customer Transfer to -"]
+    receive_keywords = ["Funds received from -"]
+
+    # Filter transactions for send money
+    send_money_transactions = transaction_data[transaction_data['Details'].str.lower().str.contains('|'.join(send_keywords).lower(), na=False)]
+
+    # Filter transactions for send money
+    send_money_transactions = transaction_data[transaction_data['Details'].str.contains('|'.join(send_keywords), case=False, na=False)]
+
+    # Extract recipient's name (part after the last hyphen, considering line breaks)
+    send_money_transactions['Recipient'] = send_money_transactions['Details'].str.extract(r'-\s*([\s\S]+)$')
+
+    # Clean the extracted recipient names
+    send_money_transactions['Recipient'] = send_money_transactions['Recipient'].str.replace(r'\s+', ' ', regex=True).str.strip()
+
+
+
+    # Filter transactions for receive money
+    receive_money_transactions = transaction_data[transaction_data['Details'].str.lower().str.contains('|'.join(receive_keywords).lower(), na=False)]
+
+    # Convert 'Completion Time' to datetime (if not already)
+    send_money_transactions['Completion Time'] = pd.to_datetime(send_money_transactions['Completion Time'], errors='coerce')
+    receive_money_transactions['Completion Time'] = pd.to_datetime(receive_money_transactions['Completion Time'], errors='coerce')
+
+    # Convert amounts to positive values for consistency
+    send_money_transactions['Withdrawn'] = send_money_transactions['Withdrawn'].abs()
+    receive_money_transactions['Deposited'] = receive_money_transactions['Paid In'].abs()
+
+    # Extract sender's name (part after the last hyphen)
+    receive_money_transactions['Sender'] = receive_money_transactions['Details'].str.extract(r'-\s*([\s\S]+)$')
+
+    # Handle cases where 'Sender' might be null or needs stripping
+    receive_money_transactions['Sender'] = receive_money_transactions['Sender'].str.replace(r'\s+', ' ', regex=True).str.strip()
+
+    # Group by sender to calculate total and count of transactions
+    sender_summary = receive_money_transactions.groupby('Sender').agg(
+        Total_Amount=('Deposited', 'sum'),
+        Transaction_Count=('Deposited', 'count')
+    ).reset_index()
+
+    # Sort to get the top 10 senders by total amount sent
+    top_10_senders = sender_summary.sort_values(by='Total_Amount', ascending=False).head(10)
+
+    # Create the bar chart using Plotly
+    fig = px.bar(
+        top_10_senders,
+        x='Sender',  # Names of the senders
+        y='Total_Amount',  # Total amount sent by each sender
+        title="Top 10 Senders by Total Amount Sent",
+        labels={
+            'Sender': 'Sender Name',
+            'Total_Amount': 'Total Amount Sent (Ksh)'
+        },
+        text='Total_Amount',  # Display amounts on bars
+        color='Total_Amount',  # Optional: Use color to represent amount
+        color_continuous_scale='Blues'  # Optional: Color gradient
+    )
+
+    # Update layout for better readability
+    fig.update_traces(
+        texttemplate='Ksh %{text:,.2f}',  # Format text with currency and commas
+        textposition='outside'  # Position text outside bars
+    )
+    fig.update_layout(
+        xaxis=dict(
+            tickangle=45,  # Rotate x-axis labels for better readability
+        ),
+        yaxis=dict(
+            tickformat=","  # Add thousands separators to y-axis values
+        ),
+        template="plotly_dark"  # Optional: Use 'plotly' for a lighter theme
+    )
+
+    # Display the chart in Streamlit
+    st.plotly_chart(fig)
+
+
+    # Display top 10 senders
+    st.subheader("Top 10 Senders (By Total Amount)")
+    st.dataframe(top_10_senders)
+
+    # Sort to get the top 10 largest single transactions
+    top_10_transactions = receive_money_transactions.sort_values(by='Deposited', ascending=False).head(10)
+
+    # Display top 10 sent amounts
+    st.subheader("Top 10 Largest Received Transactions")
+    st.dataframe(top_10_transactions[['Details', 'Sender', 'Deposited']])
+
+    # Generate Summary DataFrame for Send Money
+    send_summary = send_money_transactions.agg(
+        Transaction_Count=('Withdrawn', 'count'),
+        Total_Amount=('Withdrawn', 'sum'),
+        Min_Amount=('Withdrawn', 'min'),
+        Max_Amount=('Withdrawn', 'max'),
+        Avg_Amount=('Withdrawn', 'mean')
+    ).reset_index()
+
+    # Generate Summary DataFrame for Receive Money
+    receive_summary = receive_money_transactions.agg(
+        Transaction_Count=('Paid In', 'count'),
+        Total_Amount=('Paid In', 'sum'),
+        Min_Amount=('Paid In', 'min'),
+        Max_Amount=('Paid In', 'max'),
+        Avg_Amount=('Paid In', 'mean')
+    ).reset_index()
+
+    # Display the summary dataframes
+    st.subheader("Send Money Summary")
+    st.dataframe(send_summary)
+
+    st.subheader("Receive Money Summary")
+    st.dataframe(receive_summary)
+
+    # Group by 'Completion Time' to analyze trends over time
+    send_by_time = send_money_transactions.groupby('Completion Time').agg(
+        Total_Sent=('Withdrawn', 'sum')
+    ).reset_index()
+
+    receive_by_time = receive_money_transactions.groupby('Completion Time').agg(
+        Total_Received=('Paid In', 'sum')
+    ).reset_index()
+
+    # Display and visualize Send Money analysis over time
+    st.subheader("Send Money Transactions Over Time")
+    st.dataframe(send_by_time)
+    #st.line_chart(send_by_time.set_index('Completion Time')['Total_Sent'])
+
+    # Create a line chart using Plotly
+    fig = px.line(
+        receive_by_time,
+        x='Completion Time',  # X-axis: Time of transaction
+        y='Total_Received',  # Y-axis: Total received amount
+        title="Receive Money Transactions Over Time",
+        labels={
+            'Completion Time': 'Time of Transaction',
+            'Total_Received': 'Total Received (Ksh)'
+        },
+        markers=True  # Add markers for data points
+    )
+
+    # Update layout for better readability
+    fig.update_layout(
+        xaxis=dict(
+            tickformat="%Y-%m-%d %H:%M",  # Format x-axis to show date-time
+            tickangle=45,  # Rotate labels for better readability
+        ),
+        yaxis=dict(
+            tickformat=","  # Add thousands separator for amounts
+        ),
+        template="plotly_dark"  # Optional: Use 'plotly' for a lighter theme
+    )
+
+    # Display the chart in Streamlit
+    st.plotly_chart(fig)
+
+  
+
+
+    
+
+    # Group by Month for a high-level overview
+    send_money_transactions['Completion Month'] = send_money_transactions['Completion Time'].dt.to_period('M').dt.strftime('%Y-%b')
+    receive_money_transactions['Completion Month'] = receive_money_transactions['Completion Time'].dt.to_period('M').dt.strftime('%Y-%b')
+
+    send_by_month = send_money_transactions.groupby('Completion Month').agg(
+        Total_Sent=('Withdrawn', 'sum')
+    ).reset_index()
+
+    receive_by_month = receive_money_transactions.groupby('Completion Month').agg(
+        Total_Received=('Deposited', 'sum')
+    ).reset_index()
+
+    # Display monthly trends
+    st.subheader("Send Money Transactions by Month")
+    st.dataframe(send_by_month)
+    
+    fig = px.line(
+        receive_by_month,
+        x='Completion Month',  # X-axis: Month-Year
+        y='Total_Received',  # Y-axis: Total received amount
+        title="Send Money Transactions by Month",
+        labels={
+            'Completion Month': 'Month-Year',
+            'Total_Sent': 'Total Sent (Ksh)'
+        },
+        markers=True  # Add markers for data points
+    )
+
+    # Update layout for better readability
+    fig.update_layout(
+        xaxis=dict(
+            tickmode='linear',  # Ensure all months are displayed
+            tickangle=45,  # Rotate labels for better readability
+        ),
+        yaxis=dict(
+            tickformat=","  # Add thousands separator for amounts
+        ),
+        template="plotly_dark"  # Optional: Use 'plotly' for a lighter theme
+    )
+
+    # Display the chart in Streamlit
+    st.plotly_chart(fig)
+
+    # Optionally, show the raw data table
+    st.subheader("Receive Money Transactions by Month - Raw Data")
+    st.dataframe(receive_by_month)
+
+    st.subheader("Receive Money Transactions by Month")
+    st.dataframe(receive_by_month)
+    # Create a line chart using Plotly
+    fig = px.line(
+        receive_by_month,
+        x='Completion Month',  # X-axis: Month-Year
+        y='Total_Received',  # Y-axis: Total received amount
+        title="Receive Money Transactions by Month",
+        labels={
+            'Completion Month': 'Month-Year',
+            'Total_Received': 'Total Received (Ksh)'
+        },
+        markers=True  # Add markers for data points
+    )
+
+    # Update layout for better readability
+    fig.update_layout(
+        xaxis=dict(
+            tickmode='linear',  # Ensure all months are displayed
+            tickangle=45,  # Rotate labels for better readability
+        ),
+        yaxis=dict(
+            tickformat=","  # Add thousands separator for amounts
+        ),
+        template="plotly_dark"  # Optional: Use 'plotly' for a lighter theme
+    )
+
+    # Display the chart in Streamlit
+    st.plotly_chart(fig)
+
+    # Optionally, show the raw data table
+    st.subheader("Receive Money Transactions by Month - Raw Data")
+    st.dataframe(receive_by_month)
+
+    # Extract recipient's name, considering possible line breaks
+    send_money_transactions['Recipient'] = send_money_transactions['Details'].str.extract(r'-\s*([\s\S]+)$')
+
+    # Clean the extracted recipient names
+    send_money_transactions['Recipient'] = send_money_transactions['Recipient'].str.replace(r'\s+', ' ', regex=True).str.strip()        
+
+    # Group by 'Recipient' to calculate total sent amounts
+    top_10_sent = send_money_transactions.groupby('Recipient').agg(
+        total_sent=('Withdrawn', 'sum')
+    ).reset_index()
+
+    # Sort by total sent amount in descending order and get the top 10
+    top_10_sent = top_10_sent.sort_values(by='total_sent', ascending=False).head(10)
+
+    # Display the top 10 recipients
+    st.subheader("Top 10 Money Sent Recipients")
+    st.dataframe(top_10_sent)
+
+
+    # Create the bar chart using Plotly
+    fig = px.bar(
+        top_10_sent,
+        x='Recipient',  # Names of the recipients
+        y='total_sent',  # Total sent amounts
+        title="Top 10 Recipients by Total Sent Amount",
+        labels={
+            'Recipient': 'Recipient Name',
+            'total_sent': 'Total Sent Amount (Ksh)'
+        },
+        text='total_sent',  # Display amounts on bars
+        color='total_sent',  # Optional: Use color to represent amount
+        color_continuous_scale='Greens'  # Optional: Color gradient
+    )
+
+    # Update layout for better readability
+    fig.update_traces(
+        texttemplate='Ksh %{text:,.2f}',  # Format text with currency and commas
+        textposition='outside'  # Position text outside bars
+    )
+    fig.update_layout(
+        xaxis=dict(
+            tickangle=45,  # Rotate x-axis labels for better readability
+        ),
+        yaxis=dict(
+            tickformat=","  # Add thousands separators to y-axis values
+        ),
+        template="plotly_dark"  # Optional: Use 'plotly' for a lighter theme
+    )
+
+    # Display the chart in Streamlit
+    st.plotly_chart(fig)
+
+
+    # Select the relevant columns and sort by amount sent
+    top_10_sent_transactions = send_money_transactions[['Completion Time', 'Withdrawn', 'Recipient']].sort_values(
+        by='Withdrawn', ascending=False
+    ).head(10)
+
+    # Rename columns for clarity
+    top_10_sent_transactions.rename(columns={
+        'Completion Time': 'Date',
+        'Withdrawn': 'Amount Sent',
+        'Recipient': 'Recipient Name'
+    }, inplace=True)
+
+    # Display the top 10 sent transactions
+    st.subheader("Top 10 Money Sent Transactions")
+    st.dataframe(top_10_sent_transactions)    
+
+    
+    # Calculate total amounts and transaction counts for send money
+    send_money_total = send_money_transactions['Withdrawn'].sum()
+    send_money_count = send_money_transactions.shape[0]
+
+    # Calculate total amounts and transaction counts for receive money
+    receive_money_total = receive_money_transactions['Paid In'].sum()
+    receive_money_count = receive_money_transactions.shape[0]
+
+    # Create a summary DataFrame for the pie chart
+    summary_data = {
+        'Category': ['Send Money', 'Receive Money'],
+        'Total Amount': [send_money_total, receive_money_total],
+        'Transaction Count': [send_money_count, receive_money_count]
+    }
+
+    summary_df = pd.DataFrame(summary_data)
+
+    # Function to format the label with amounts and percentages for total amounts
+    def make_autopct_amount(values, counts=None):
+        def my_autopct(pct):
+            total = sum(values)
+            val = pct * total / 100
+            return 'Ksh. {val:,.2f}  ({p:.1f}%)'.format(p=pct, val=val)
+        return my_autopct
+
+    # Function to format the label with counts and percentages for transaction counts
+    def make_autopct_count(values, counts):
+        def my_autopct(pct):
+            total = sum(values)
+            count = pct * total / 100
+            count = int(round(count))
+            return 'Count: {count}  ({p:.1f}%)'.format(p=pct, count=count)
+        return my_autopct
+
+    # Create the pie chart using subplots
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    # Pie chart for total amounts with both percentages and amounts displayed
+    axes[0].pie(summary_df['Total Amount'], 
+                labels=summary_df['Category'], 
+                autopct=make_autopct_amount(summary_df['Total Amount']),  # Only amount and percentage
+                startangle=90)
+    axes[0].set_title('Total Amounts for Send and Receive Money')
+
+    # Pie chart for transaction counts with both count and percentages displayed
+    axes[1].pie(summary_df['Transaction Count'], 
+                labels=summary_df['Category'], 
+                autopct=make_autopct_count(summary_df['Transaction Count'], summary_df['Transaction Count']),  # Only count and percentage
+                startangle=90)
+    axes[1].set_title('Transaction Counts for Send and Receive Money')
+
+ 
+
+
+
+
+
+    
+
+    # Example Pie Chart for Send and Receive Money
+    fig = px.pie(summary_df, 
+                values='Total Amount', 
+                names='Category', 
+                title="Send vs Receive Money",
+                hover_data=['Total Amount'],
+                labels={'Total Amount': 'Ksh.'})  # Customize as needed
+    # Format the hover text with thousands separators
+    fig.update_traces(textinfo='percent+label',  # Display both percentage and label
+                  customdata=summary_df['Transaction Count'],
+                  hovertemplate='Total Amount: Ksh. %{value:,.0f}<br>Transactions: %{customdata}') 
+
+    # Show in Streamlit
+    st.plotly_chart(fig)
+
+
+
+    # Step 6: Transaction Charges Analysis (Details column)
+    st.subheader("Transaction Charges from Details Column")
+
+    # Define the charge-related keywords to search for in the 'Details' column
+    charge_keywords = ["Pay Bill Charge", "Customer Transfer of Funds Charge", "Withdrawal Charge"]
+
+    # Filter transactions that contain charge-related keywords in the 'Details' column
+    charge_transactions = transaction_data[transaction_data['Details'].str.lower().str.contains('|'.join(charge_keywords).lower(), na=False)]
+    
+    # Convert the 'Amount' column to positive values (absolute values)
+    charge_transactions['Withdrawn'] = charge_transactions['Withdrawn'].abs()
+
+
+    # If there are charge-related transactions, group by time periods and display the actual transaction values
+    if not charge_transactions.empty:
+        # Convert 'Completion Time' to datetime if necessary
+        charge_transactions['Completion Time'] = pd.to_datetime(charge_transactions['Completion Time'], errors='coerce')
+        
+        
+        # Group by 'Completion Time' (and sum 'Withdrawn' for each group)
+        charge_summary = charge_transactions.groupby('Completion Time').agg(
+            total_transaction_charge=('Withdrawn', 'sum')
+        ).reset_index()
+
+        # Strip the time part (keeping only the date)
+        charge_summary['Completion Date'] = charge_summary['Completion Time'].dt.date  # Only keep the date part
+
+
+        # Display the charge summary by specific time
+        st.subheader("Transaction Charges by Date/Time")
+        st.dataframe(charge_summary)
+
+
+
+
+       
+
+
+
+
+        # Create the line chart using plotly
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+        x=charge_summary['Completion Date'],  # Use the new 'Completion Date' column
+        y=charge_summary['total_transaction_charge'],
+        mode='lines+markers',
+        name='Total Transaction Charges'
+        ))
+
+        # Update layout for better readability
+        fig.update_layout(
+            title="Transaction Charges Over Time",
+            xaxis_title="Date",
+            yaxis_title="Total Transaction Charges (Ksh)",
+            xaxis=dict(
+                tickformat="%Y-%m",  # Ensure the date is formatted as "Year-Month-Day"
+                tickangle=0  # Rotate labels to avoid overlap
+            ),
+            template="plotly_dark",  # Optional for styling, can change to "plotly" or others
+        )
+        # Display the plotly chart in Streamlit
+        st.plotly_chart(fig)
+
+
+
+
+
+
+        # Group by different time periods (hour, day, month, year)
+
+        # Group by 'Completion Hour' (hour of the day) and sum 'Withdrawn' for each hour
+        charge_transactions['Completion Hour'] = charge_transactions['Completion Time'].dt.hour  # Extract hour
+        charge_by_hour = charge_transactions.groupby('Completion Hour').agg(
+            total_transaction_charge=('Withdrawn', 'sum')
+        ).reset_index()
+
+        # Display charge analysis by hour
+        st.subheader("Transaction Charges by Hour")
+        st.dataframe(charge_by_hour)
+
+        # Format the hour into 'HH:MM' format
+        charge_by_hour['Hour Label'] = charge_by_hour['Completion Hour'].apply(lambda x: f"{x:02d}:00")
+
+        # Create the line chart using Plotly
+        fig = px.line(
+            charge_by_hour,
+            x='Hour Label',  # X-axis labels as formatted hours
+            y='total_transaction_charge',  # Total transaction charges
+            title="Hourly Transaction Charges Distribution",
+            labels={
+                'Hour Label': 'Hour of the Day',
+                'total_transaction_charge': 'Total Transaction Charge (Ksh)'
+            },
+            markers=True  # Add markers to the line
+        )
+
+        # Update layout for better readability
+        fig.update_layout(
+            xaxis=dict(
+                tickmode='linear',  # Ensure all hours are displayed
+                tickangle=45  # Rotate tick labels for better readability
+            ),
+            yaxis=dict(
+                tickformat=","  # Add thousands separator to y-axis values
+            ),
+            template="plotly_dark"  # Optional: Use 'plotly' for a lighter theme
+        )
+
+        # Display the chart in Streamlit
+        st.plotly_chart(fig)
+
+        # Group by 'Day' (date) and sum 'Withdrawn' for each day
+        charge_transactions['Completion Date'] = charge_transactions['Completion Time'].dt.date  # Extract date
+        charge_by_day = charge_transactions.groupby('Completion Date').agg(
+            total_transaction_charge=('Withdrawn', 'sum')
+        ).reset_index()
+
+        # Display charge analysis by day
+        st.subheader("Transaction Charges by Day")
+        st.dataframe(charge_by_day)
+
+        # Visualize the daily transaction charges
+        #st.subheader("Daily Transaction Charges Distribution")
+        #st.line_chart(charge_by_day.set_index('Completion Date')['total_transaction_charge'])
+
+
+        
+
+
+        # Create the bar chart using Plotly
+        fig = px.bar(
+            charge_by_day,
+            x='Completion Date',  # Dates on the x-axis
+            y='total_transaction_charge',  # Total charges on the y-axis
+            title="Daily Transaction Charges Distribution",
+            labels={
+                'Completion Date': 'Date',
+                'total_transaction_charge': 'Total Transaction Charges (Ksh)'
+            },
+            text='total_transaction_charge'  # Display values on bars
+        )
+
+        # Update layout for better readability
+        fig.update_traces(
+            texttemplate='%{text:,.2f}',  # Format numbers with commas and 2 decimals
+            textposition='outside'  # Position text outside bars
+        )
+        fig.update_layout(
+            xaxis=dict(
+                tickangle=45,  # Rotate x-axis labels
+                type='category'  # Treat x-axis as categorical for proper ordering
+            ),
+            yaxis=dict(
+                tickformat=","  # Add thousands separators to y-axis values
+            ),
+            template="plotly_dark"  # Optional: Use 'plotly' for a lighter theme
+        )
+
+        # Display the Plotly chart in Streamlit
+        st.plotly_chart(fig)
+
+
+
+
+
+
+
+        # Group by 'Month' and sum 'Withdrawn' for each month
+        #charge_transactions['Completion Month'] = charge_transactions['Completion Time'].dt.to_period('M').astype(str)  # Extract month
+        #charge_by_month = charge_transactions.groupby('Completion Month').agg(
+        #    total_transaction_charge=('Withdrawn', 'sum')
+        #).reset_index()
+
+
+        # Group by 'Month' and sum 'Withdrawn' for each month
+        charge_transactions['Completion Month'] = charge_transactions['Completion Time'].dt.to_period('M').astype(str)
+        charge_by_month = charge_transactions.groupby('Completion Month').agg(
+            total_transaction_charge=('Withdrawn', 'sum')
+        ).reset_index()
+
+        # Create the line chart using Plotly
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=charge_by_month['Completion Month'],  # Use the grouped months
+            y=charge_by_month['total_transaction_charge'],
+            mode='lines+markers',
+            name='Monthly Transaction Charges'
+        ))
+
+        # Update layout for better readability
+        fig.update_layout(
+            title="Monthly Transaction Charges Distribution",
+            xaxis_title="Month",
+            yaxis_title="Total Transaction Charges (Ksh)",
+            xaxis=dict(
+                tickangle=45,  # Rotate labels for better readability
+                tickmode='linear',  # Ensure all months are shown
+                type='category'  # Treat x-axis as categorical data to preserve month ordering
+            ),
+            yaxis=dict(
+                tickformat=",",  # Add thousands separators to y-axis values
+            ),
+            template="plotly_dark",  # Optional, use "plotly" for a lighter theme
+        )
+
+        # Display the Plotly chart in Streamlit
+        st.plotly_chart(fig)
+        
+        # Display charge analysis by month
+        st.subheader("Transaction Charges by Month")
+        st.dataframe(charge_by_month)
+
+        # Visualize the monthly transaction charges
+        #st.subheader("Monthly Transaction Charges Distribution")
+        #st.line_chart(charge_by_month.set_index('Completion Month')['total_transaction_charge'])
+
+        # Group by 'Year' and sum 'Withdrawn' for each year
+        charge_transactions['Completion Year'] = charge_transactions['Completion Time'].dt.year.astype(str)  # Extract year
+        charge_by_year = charge_transactions.groupby('Completion Year').agg(
+            total_transaction_charge=('Withdrawn', 'sum')
+        ).reset_index()
+
+        # Display charge analysis by year
+        st.subheader("Transaction Charges by Year")
+        st.dataframe(charge_by_year)
+
+        # Create the line chart using Plotly
+        fig = px.line(
+            charge_by_year,
+            x='Completion Year',  # X-axis: Years
+            y='total_transaction_charge',  # Y-axis: Total transaction charge
+            title="Yearly Transaction Charges Distribution",
+            labels={
+                'Completion Year': 'Year',
+                'total_transaction_charge': 'Total Transaction Charge (Ksh)'
+            },
+            markers=True  # Add markers to the line
+        )
+
+        # Update layout for better readability
+        fig.update_layout(
+            xaxis=dict(
+                tickmode='linear',  # Ensure all years are displayed
+            ),
+            yaxis=dict(
+                tickformat=","  # Add thousands separator to y-axis values
+            ),
+            template="plotly_dark"  # Optional: Use 'plotly' for a lighter theme
+        )
+
+        # Display the chart in Streamlit
+        st.plotly_chart(fig)
+    
+else:
+    st.warning("No transaction data found. Please upload a report on the 'Upload your report' page.")
+
+
+"""
