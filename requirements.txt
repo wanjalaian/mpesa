@@ -7,4 +7,6 @@ scikit-learn
 pdfplumber
 streamlit_dynamic_filters
 nltk
+matplotlib
+
 
